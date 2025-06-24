@@ -196,8 +196,8 @@ class TelegramBotChatAppTests(unittest.TestCase):
                 print(f"✅ WebSocket connection working, message echoed back with ID: {data['message_id']}")
                 return True
                 
-        except (websockets.exceptions.ConnectionError, asyncio.TimeoutError) as e:
-            print(f"❌ WebSocket connection failed: {str(e)}")
+        except asyncio.TimeoutError as e:
+            print(f"❌ WebSocket connection timed out: {str(e)}")
             return False
         except Exception as e:
             print(f"❌ WebSocket test failed: {str(e)}")
