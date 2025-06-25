@@ -171,6 +171,62 @@ class TelegramBotHandler:
         await query.edit_message_text(text=text, reply_markup=reply_markup)
     
     @staticmethod
+    async def start_document_upload(query):
+        """Start document upload process"""
+        user_id = str(query.from_user.id)
+        USER_STATES[user_id] = "uploading_docs"
+        
+        upload_text = (
+            "📤 Загрузка документов\n\n"
+            "Отправьте ваши документы по одному.\n"
+            "Поддерживаются: фото, PDF, DOC, DOCX\n\n"
+            "После отправки каждого документа укажите его тип."
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("↩️ Назад к меню абитуриента", callback_data="back_to_applicant")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text=upload_text, reply_markup=reply_markup)
+    
+    @staticmethod
+    async def handle_document_type_selection(query, data):
+        """Handle document type selection"""
+        parts = data.split("_")
+        doc_type = parts[2]
+        doc_id = parts[3]
+        
+        try:
+            # Update document type
+            document = await sync_to_async(Document.objects.get)(id=doc_id)
+            document.document_type = doc_type
+            await sync_to_async(document.save)()
+            
+            doc_type_names = {
+                'passport': 'Паспорт',
+                'education': 'Аттестат об образовании',
+                'photo': 'Фотография',
+                'medical': 'Медицинская справка',
+                'military': 'Военный билет',
+                'other': 'Другое'
+            }
+            
+            type_name = doc_type_names.get(doc_type, 'Документ')
+            
+            await query.edit_message_text(
+                f"✅ Документ сохранен как: {type_name}\n\n"
+                f"Можете отправить следующий документ или вернуться в меню.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("↩️ Назад к меню абитуриента", callback_data="back_to_applicant")]
+                ])
+            )
+            
+        except Exception as e:
+            logger.error(f"Error updating document type: {e}")
+            await query.edit_message_text("Ошибка обновления типа документа.")
+    
+    @staticmethod
     async def show_document_requirements(query):
         """Show document requirements"""
         text = (
