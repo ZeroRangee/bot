@@ -6,9 +6,10 @@ from django.contrib.admin.views.decorators import staff_member_required
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .models import Message, TelegramUser, ChatSession, Document, ApplicantProfile, BroadcastMessage
-from .serializers import MessageSerializer, TelegramUserSerializer, DocumentSerializer, ChatSessionSerializer
+from .models import Message, TelegramUser, ChatSession, Document, ApplicantProfile, BroadcastMessage, ScrapedContent, StudentGroup, StudentProfile, Schedule, ScheduleEntry
+from .serializers import MessageSerializer, TelegramUserSerializer, DocumentSerializer, ChatSessionSerializer, StudentGroupSerializer, ScheduleEntrySerializer
 from .services.openai_service import UniversityAIService
+from .services.schedule_service import ScheduleService
 import json
 from django.db.models import Count, Q
 from django.utils import timezone
