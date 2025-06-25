@@ -21,6 +21,94 @@ class TelegramUser(models.Model):
     def __str__(self):
         return f"{self.username or self.first_name} ({self.telegram_id}) - {self.get_user_type_display()}"
 
+# Schedule-related models
+class StudentGroup(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    course = models.CharField(max_length=20)
+    faculty = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return f"{self.name} ({self.course})"
+
+class Teacher(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField(blank=True, null=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    department = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return self.name
+
+class Classroom(models.Model):
+    name = models.CharField(max_length=50)
+    building = models.CharField(max_length=100, default='Главный корпус')
+    floor = models.IntegerField(blank=True, null=True)
+    capacity = models.IntegerField(default=30)
+    equipment = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    def __str__(self):
+        return f"{self.name} ({self.building})"
+
+class Schedule(models.Model):
+    group = models.ForeignKey(StudentGroup, on_delete=models.CASCADE)
+    date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['group', 'date']
+    
+    def __str__(self):
+        return f"Расписание {self.group.name} на {self.date}"
+
+class ScheduleEntry(models.Model):
+    LESSON_TYPES = [
+        ('lecture', 'Лекция'),
+        ('practice', 'Практика'),
+        ('laboratory', 'Лабораторная'),
+        ('seminar', 'Семинар'),
+        ('exam', 'Экзамен'),
+        ('consultation', 'Консультация'),
+    ]
+    
+    group = models.ForeignKey(StudentGroup, on_delete=models.CASCADE)
+    date = models.DateField()
+    time = models.CharField(max_length=20)  # e.g., "09:00-10:30"
+    subject = models.CharField(max_length=200)
+    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
+    classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE)
+    lesson_type = models.CharField(max_length=20, choices=LESSON_TYPES, default='lecture')
+    notes = models.TextField(blank=True, null=True)
+    is_cancelled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        ordering = ['date', 'time']
+    
+    def __str__(self):
+        return f"{self.group.name} - {self.subject} ({self.time})"
+
+# Student profile for schedule
+class StudentProfile(models.Model):
+    telegram_user = models.OneToOneField(TelegramUser, on_delete=models.CASCADE)
+    student_id = models.CharField(max_length=20, blank=True, null=True)
+    group = models.ForeignKey(StudentGroup, on_delete=models.SET_NULL, blank=True, null=True)
+    full_name = models.CharField(max_length=200, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    course = models.CharField(max_length=10, blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Студент {self.telegram_user} - {self.group}"
+
+# Existing models (keeping them)
 class Message(models.Model):
     MESSAGE_SOURCES = [
         ('web', 'Web Interface'),
@@ -36,6 +124,7 @@ class Message(models.Model):
         ('chat', 'Обычное сообщение'),
         ('ai_question', 'ИИ вопрос'),
         ('admin_broadcast', 'Рассылка админа'),
+        ('schedule_request', 'Запрос расписания'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -58,6 +147,7 @@ class ChatSession(models.Model):
         ('general', 'Общий чат'),
         ('admission', 'Приемная комиссия'),
         ('ai_chat', 'ИИ чат'),
+        ('schedule', 'Расписание'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
