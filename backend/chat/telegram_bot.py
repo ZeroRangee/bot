@@ -66,10 +66,14 @@ class TelegramBotHandler:
             await TelegramBotHandler.handle_user_type_selection(query, data)
         elif data.startswith("applicant_"):
             await TelegramBotHandler.handle_applicant_menu(query, data)
+        elif data.startswith("student_"):
+            await TelegramBotHandler.handle_student_menu(query, data)
         elif data == "back_to_main":
             await TelegramBotHandler.show_main_menu(query)
         elif data == "back_to_applicant":
             await TelegramBotHandler.show_applicant_menu(query)
+        elif data == "back_to_student":
+            await TelegramBotHandler.show_student_menu(query)
     
     @staticmethod
     async def handle_user_type_selection(query, data):
