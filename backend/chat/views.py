@@ -309,10 +309,11 @@ def get_student_groups(request):
         return Response({'error': str(e)}, status=500)
 
 @api_view(['GET'])
-async def get_group_schedule(request, group_name):
+def get_group_schedule(request, group_name):
     """Get schedule for specific group"""
     try:
         from datetime import datetime
+        import asyncio
         
         # Get date parameter or use today
         date_str = request.GET.get('date')
@@ -321,9 +322,18 @@ async def get_group_schedule(request, group_name):
         else:
             date = datetime.now()
         
-        # Get schedule from service
+        # Get schedule from service (using sync wrapper)
         schedule_service = ScheduleService()
-        schedule_data = await schedule_service.get_group_schedule(group_name, date)
+        
+        # Run async function in sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            schedule_data = loop.run_until_complete(
+                schedule_service.get_group_schedule(group_name, date)
+            )
+        finally:
+            loop.close()
         
         return Response({
             'group': group_name,
@@ -335,9 +345,11 @@ async def get_group_schedule(request, group_name):
         return Response({'error': str(e)}, status=500)
 
 @api_view(['POST'])
-async def search_groups(request):
+def search_groups(request):
     """Search groups by query"""
     try:
+        import asyncio
+        
         query = request.data.get('query', '')
         
         if not query:
@@ -345,7 +357,16 @@ async def search_groups(request):
         
         # Search groups
         schedule_service = ScheduleService()
-        matching_groups = await schedule_service.search_groups(query)
+        
+        # Run async function in sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            matching_groups = loop.run_until_complete(
+                schedule_service.search_groups(query)
+            )
+        finally:
+            loop.close()
         
         return Response({
             'query': query,
