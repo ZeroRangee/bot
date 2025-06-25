@@ -323,7 +323,7 @@ class TelegramBotChatAppTests(unittest.TestCase):
         """Test WebSocket connection to ws://localhost:8001/ws/admin-chat/"""
         try:
             # Try to connect to the admin WebSocket endpoint
-            async with websockets.connect(self.admin_ws_url, timeout=5) as websocket:
+            async with websockets.connect(self.admin_ws_url) as websocket:
                 # Just test connection - AdminChatConsumer doesn't process incoming messages
                 print(f"✅ Admin WebSocket connection established successfully")
                 return True
