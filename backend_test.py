@@ -11,7 +11,7 @@ import unittest
 from urllib.parse import urljoin
 
 # Configuration
-BACKEND_URL = "https://cdffc6cc-aa67-4576-9ddf-29bba95860c5.preview.emergentagent.com"
+BACKEND_URL = "https://91ea1d7f-61c5-49ae-80d2-ed08fe05f717.preview.emergentagent.com"
 API_URL = urljoin(BACKEND_URL, "/api/")
 WEBSOCKET_URL = "ws://localhost:8001/ws/chat/"
 BOT_TOKEN = "7510155003:AAHxU-SkAlo5yN1SoHVzom3b9LIZv-JhPK8"
