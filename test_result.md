@@ -192,6 +192,7 @@ test_plan:
   stuck_tasks: []
   test_all: true
   test_priority: "high_first"
+  backend_tested: true
 
 agent_communication:
   - agent: "main"
