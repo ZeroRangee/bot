@@ -1,11 +1,46 @@
 from rest_framework import serializers
-from .models import Message, TelegramUser, Document, ChatSession, ApplicantProfile, BroadcastMessage
+from .models import Message, TelegramUser, Document, ChatSession, ApplicantProfile, BroadcastMessage, StudentGroup, StudentProfile, ScheduleEntry, Teacher, Classroom
 
 class TelegramUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = TelegramUser
         fields = ['telegram_id', 'username', 'first_name', 'last_name', 
                  'user_type', 'is_active', 'created_at']
+
+class StudentGroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentGroup
+        fields = ['name', 'course', 'faculty', 'is_active', 'created_at']
+
+class TeacherSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Teacher
+        fields = ['name', 'email', 'phone', 'department', 'created_at']
+
+class ClassroomSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Classroom
+        fields = ['name', 'building', 'floor', 'capacity', 'equipment', 'created_at']
+
+class ScheduleEntrySerializer(serializers.ModelSerializer):
+    teacher = TeacherSerializer(read_only=True)
+    classroom = ClassroomSerializer(read_only=True)
+    group = StudentGroupSerializer(read_only=True)
+    lesson_type_display = serializers.CharField(source='get_lesson_type_display', read_only=True)
+    
+    class Meta:
+        model = ScheduleEntry
+        fields = ['group', 'date', 'time', 'subject', 'teacher', 'classroom', 
+                 'lesson_type', 'lesson_type_display', 'notes', 'is_cancelled', 'created_at']
+
+class StudentProfileSerializer(serializers.ModelSerializer):
+    telegram_user = TelegramUserSerializer(read_only=True)
+    group = StudentGroupSerializer(read_only=True)
+    
+    class Meta:
+        model = StudentProfile
+        fields = ['telegram_user', 'student_id', 'group', 'full_name', 'email', 
+                 'phone', 'course', 'created_at', 'updated_at']
 
 class MessageSerializer(serializers.ModelSerializer):
     telegram_user = TelegramUserSerializer(read_only=True)
