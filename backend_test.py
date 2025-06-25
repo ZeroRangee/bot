@@ -299,7 +299,7 @@ class TelegramBotChatAppTests(unittest.TestCase):
                 await websocket.send(json.dumps(test_message))
                 
                 # Wait for response
-                response = await asyncio.wait_for(websocket.recv(), timeout=5)
+                response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
                 data = json.loads(response)
                 
                 # Verify response contains expected fields
