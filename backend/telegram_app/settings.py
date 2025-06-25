@@ -110,6 +110,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
 # CORS settings for frontend
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
