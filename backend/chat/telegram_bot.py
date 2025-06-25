@@ -124,14 +124,356 @@ class TelegramBotHandler:
     
     @staticmethod
     async def show_student_menu(query):
-        """Show student menu (placeholder)"""
+        """Show student menu"""
+        user_id = str(query.from_user.id)
+        
+        # Get student profile if exists
+        try:
+            telegram_user = await sync_to_async(TelegramUser.objects.get)(telegram_id=user_id)
+            student_profile = await sync_to_async(
+                lambda: getattr(telegram_user, 'studentprofile', None)
+            )()
+        except:
+            student_profile = None
+        
+        if student_profile and student_profile.group:
+            group_info = f"Группа: {student_profile.group.name}"
+        else:
+            group_info = "Группа не указана"
+        
         text = (
-            "👨‍🎓 Меню для студентов\n\n"
-            "Функционал для студентов в разработке..."
+            f"🎓 Меню для студентов\n\n"
+            f"👤 {group_info}\n\n"
+            f"Выберите нужное действие:"
         )
         
         keyboard = [
+            [InlineKeyboardButton("📅 Мое расписание", callback_data="student_my_schedule")],
+            [InlineKeyboardButton("🔍 Найти расписание группы", callback_data="student_search_schedule")],
+            [InlineKeyboardButton("📊 Расписание на сегодня", callback_data="student_today_schedule")],
+            [InlineKeyboardButton("📋 Расписание на неделю", callback_data="student_week_schedule")],
+            [InlineKeyboardButton("⚙️ Настроить группу", callback_data="student_set_group")],
+            [InlineKeyboardButton("❓ Задать вопрос", callback_data="student_ask_question")],
             [InlineKeyboardButton("↩️ Назад к меню", callback_data="back_to_main")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+    
+    @staticmethod
+    async def handle_student_menu(query, data):
+        """Handle student menu actions"""
+        user_id = str(query.from_user.id)
+        
+        if data == "student_my_schedule":
+            await TelegramBotHandler.show_my_schedule(query)
+        elif data == "student_search_schedule":
+            await TelegramBotHandler.start_schedule_search(query)
+        elif data == "student_today_schedule":
+            await TelegramBotHandler.show_today_schedule(query)
+        elif data == "student_week_schedule":
+            await TelegramBotHandler.show_week_schedule(query)
+        elif data == "student_set_group":
+            await TelegramBotHandler.start_group_setup(query)
+        elif data == "student_ask_question":
+            await TelegramBotHandler.start_ai_chat_student(query)
+        elif data.startswith("select_group_"):
+            group_name = data.replace("select_group_", "").replace("_", "/")
+            await TelegramBotHandler.set_student_group(query, group_name)
+        elif data.startswith("schedule_group_"):
+            group_name = data.replace("schedule_group_", "").replace("_", "/")
+            await TelegramBotHandler.show_group_schedule(query, group_name)
+    
+    @staticmethod
+    async def show_my_schedule(query):
+        """Show student's personal schedule"""
+        user_id = str(query.from_user.id)
+        
+        try:
+            telegram_user = await sync_to_async(TelegramUser.objects.get)(telegram_id=user_id)
+            student_profile = await sync_to_async(
+                lambda: getattr(telegram_user, 'studentprofile', None)
+            )()
+            
+            if not student_profile or not student_profile.group:
+                text = (
+                    "📅 Мое расписание\n\n"
+                    "⚠️ Группа не настроена.\n"
+                    "Нажмите 'Настроить группу' для выбора вашей группы."
+                )
+                keyboard = [
+                    [InlineKeyboardButton("⚙️ Настроить группу", callback_data="student_set_group")],
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ]
+            else:
+                # Get today's schedule
+                schedule = await schedule_service.get_today_schedule(student_profile.group.name)
+                
+                text = f"📅 Расписание группы {student_profile.group.name}\n"
+                text += f"📆 {datetime.now().strftime('%d.%m.%Y (%A)')}\n\n"
+                
+                if schedule:
+                    for i, lesson in enumerate(schedule, 1):
+                        text += f"{i}. {lesson['time']}\n"
+                        text += f"   📚 {lesson['subject']}\n"
+                        text += f"   👨‍🏫 {lesson['teacher']}\n"
+                        text += f"   🏢 {lesson['classroom']}\n"
+                        text += f"   📝 {lesson.get('type', 'Лекция')}\n\n"
+                else:
+                    text += "📭 На сегодня занятий нет"
+                
+                keyboard = [
+                    [InlineKeyboardButton("📋 Неделя", callback_data="student_week_schedule")],
+                    [InlineKeyboardButton("🔄 Обновить", callback_data="student_my_schedule")],
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text=text, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error in show_my_schedule: {e}")
+            await query.edit_message_text(
+                "❌ Ошибка получения расписания. Попробуйте позже.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ])
+            )
+    
+    @staticmethod
+    async def start_schedule_search(query):
+        """Start schedule search process"""
+        user_id = str(query.from_user.id)
+        USER_STATES[user_id] = "searching_schedule"
+        
+        text = (
+            "🔍 Поиск расписания группы\n\n"
+            "Введите название группы или часть названия:\n"
+            "Например: ДИС-241, ДД-232, ДБ-223\n\n"
+            "💡 Доступные факультеты:\n"
+            "• ДИС - Информационные системы\n"
+            "• ДД - Дизайн\n"
+            "• ДБ - Бизнес\n"
+            "• ДП - Педагогический\n"
+            "• ДР - Реклама\n"
+            "• ДЮ - Юридический\n"
+            "И другие..."
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+    
+    @staticmethod
+    async def show_today_schedule(query):
+        """Show today's schedule for all groups"""
+        text = (
+            "📊 Расписание на сегодня\n\n"
+            "Выберите группу для просмотра расписания:"
+        )
+        
+        # Get some sample groups
+        groups = ["ДИС-241.1/21", "ДД-232.1/21", "ДБ-223/21", "ДП-223.1/21"]
+        
+        keyboard = []
+        for group in groups:
+            keyboard.append([
+                InlineKeyboardButton(f"📅 {group}", callback_data=f"schedule_group_{group.replace('/', '_')}")
+            ])
+        
+        keyboard.append([InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+    
+    @staticmethod
+    async def show_week_schedule(query):
+        """Show week schedule for student's group"""
+        user_id = str(query.from_user.id)
+        
+        try:
+            telegram_user = await sync_to_async(TelegramUser.objects.get)(telegram_id=user_id)
+            student_profile = await sync_to_async(
+                lambda: getattr(telegram_user, 'studentprofile', None)
+            )()
+            
+            if not student_profile or not student_profile.group:
+                text = "⚠️ Группа не настроена. Настройте группу для просмотра расписания."
+                keyboard = [
+                    [InlineKeyboardButton("⚙️ Настроить группу", callback_data="student_set_group")],
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ]
+            else:
+                # Get week schedule
+                week_schedule = await schedule_service.get_week_schedule(student_profile.group.name)
+                
+                text = f"📋 Расписание на неделю\n"
+                text += f"👥 Группа: {student_profile.group.name}\n\n"
+                
+                for day, lessons in week_schedule.items():
+                    text += f"📅 {day}\n"
+                    if lessons:
+                        for lesson in lessons:
+                            text += f"  {lesson['time']} - {lesson['subject']}\n"
+                    else:
+                        text += "  📭 Занятий нет\n"
+                    text += "\n"
+                
+                keyboard = [
+                    [InlineKeyboardButton("📅 Сегодня", callback_data="student_my_schedule")],
+                    [InlineKeyboardButton("🔄 Обновить", callback_data="student_week_schedule")],
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text=text, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error in show_week_schedule: {e}")
+            await query.edit_message_text(
+                "❌ Ошибка получения расписания.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ])
+            )
+    
+    @staticmethod
+    async def start_group_setup(query):
+        """Start group setup process"""
+        user_id = str(query.from_user.id)
+        USER_STATES[user_id] = "setting_group"
+        
+        text = (
+            "⚙️ Настройка группы\n\n"
+            "Выберите курс:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("1️⃣ 1 курс", callback_data="course_1")],
+            [InlineKeyboardButton("2️⃣ 2 курс", callback_data="course_2")],
+            [InlineKeyboardButton("3️⃣ 3 курс", callback_data="course_3")],
+            [InlineKeyboardButton("4️⃣ 4 курс", callback_data="course_4")],
+            [InlineKeyboardButton("🔍 Поиск по названию", callback_data="search_group")],
+            [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+    
+    @staticmethod
+    async def set_student_group(query, group_name):
+        """Set student's group"""
+        user_id = str(query.from_user.id)
+        
+        try:
+            # Get or create student group
+            group = await sync_to_async(StudentGroup.objects.get_or_create)(
+                name=group_name,
+                defaults={
+                    'course': '1 курс',  # Default, will be updated
+                    'faculty': schedule_service.extract_faculty_from_group(group_name),
+                    'is_active': True
+                }
+            )
+            group = group[0]
+            
+            # Get or create telegram user
+            telegram_user = await sync_to_async(TelegramUser.objects.get)(telegram_id=user_id)
+            
+            # Get or create student profile
+            student_profile, created = await sync_to_async(StudentProfile.objects.get_or_create)(
+                telegram_user=telegram_user,
+                defaults={'group': group}
+            )
+            
+            if not created:
+                student_profile.group = group
+                await sync_to_async(student_profile.save)()
+            
+            text = (
+                f"✅ Группа установлена!\n\n"
+                f"👥 Ваша группа: {group_name}\n"
+                f"🏫 Факультет: {group.faculty}\n\n"
+                f"Теперь вы можете просматривать расписание вашей группы."
+            )
+            
+            keyboard = [
+                [InlineKeyboardButton("📅 Мое расписание", callback_data="student_my_schedule")],
+                [InlineKeyboardButton("📋 Неделя", callback_data="student_week_schedule")],
+                [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(text=text, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error setting student group: {e}")
+            await query.edit_message_text(
+                "❌ Ошибка установки группы. Попробуйте еще раз.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ])
+            )
+    
+    @staticmethod
+    async def show_group_schedule(query, group_name):
+        """Show schedule for specific group"""
+        try:
+            schedule = await schedule_service.get_today_schedule(group_name)
+            
+            text = f"📅 Расписание группы {group_name}\n"
+            text += f"📆 {datetime.now().strftime('%d.%m.%Y (%A)')}\n\n"
+            
+            if schedule:
+                for i, lesson in enumerate(schedule, 1):
+                    text += f"{i}. {lesson['time']}\n"
+                    text += f"   📚 {lesson['subject']}\n"
+                    text += f"   👨‍🏫 {lesson['teacher']}\n"
+                    text += f"   🏢 {lesson['classroom']}\n"
+                    text += f"   📝 {lesson.get('type', 'Лекция')}\n\n"
+            else:
+                text += "📭 На сегодня занятий нет"
+            
+            keyboard = [
+                [InlineKeyboardButton("📋 Неделя", callback_data=f"week_schedule_{group_name.replace('/', '_')}")],
+                [InlineKeyboardButton("⚙️ Выбрать как мою группу", callback_data=f"select_group_{group_name.replace('/', '_')}")],
+                [InlineKeyboardButton("↩️ Назад", callback_data="student_today_schedule")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(text=text, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error showing group schedule: {e}")
+            await query.edit_message_text(
+                "❌ Ошибка получения расписания группы.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("↩️ Назад", callback_data="student_today_schedule")]
+                ])
+            )
+    
+    @staticmethod
+    async def start_ai_chat_student(query):
+        """Start AI chat for students"""
+        user_id = str(query.from_user.id)
+        USER_STATES[user_id] = "ai_chat_student"
+        
+        text = (
+            "🤖 ИИ-помощник для студентов\n\n"
+            "Я могу помочь с вопросами о:\n"
+            "📅 Расписании занятий\n"
+            "📚 Учебных дисциплинах\n"
+            "🏫 Университете и факультетах\n"
+            "📝 Академических вопросах\n"
+            "🎓 Студенческой жизни\n\n"
+            "Задайте любой вопрос..."
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("↩️ Назад к меню студента", callback_data="back_to_student")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
