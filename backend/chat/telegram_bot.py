@@ -732,6 +732,207 @@ class TelegramBotHandler:
             )
     
     @staticmethod
+    async def handle_ai_question_student(update: Update, question: str):
+        """Handle AI question from student"""
+        user_id = str(update.effective_user.id)
+        
+        # Send "typing" action
+        await bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        
+        try:
+            # Get AI response with student context
+            ai_response = await sync_to_async(ai_service.get_ai_response)(
+                f"Вопрос студента: {question}"
+            )
+            
+            # Save message to database
+            telegram_user = await sync_to_async(TelegramUser.objects.get)(telegram_id=user_id)
+            await sync_to_async(Message.objects.create)(
+                text=question,
+                source='telegram',
+                direction='incoming',
+                message_type='ai_question',
+                telegram_user=telegram_user
+            )
+            
+            await sync_to_async(Message.objects.create)(
+                text=ai_response,
+                source='telegram',
+                direction='outgoing',
+                message_type='ai_question',
+                telegram_user=telegram_user
+            )
+            
+            # Send response
+            keyboard = [
+                [InlineKeyboardButton("❓ Еще вопрос", callback_data="student_ask_question")],
+                [InlineKeyboardButton("📅 Мое расписание", callback_data="student_my_schedule")],
+                [InlineKeyboardButton("↩️ Назад к меню", callback_data="back_to_student")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(ai_response, reply_markup=reply_markup)
+            
+            # Clear state to allow new questions
+            USER_STATES[user_id] = "ai_chat_student"
+            
+        except Exception as e:
+            logger.error(f"Error handling student AI question: {e}")
+            await update.message.reply_text(
+                "Извините, произошла ошибка при обработке вашего вопроса. Попробуйте позже."
+            )
+    
+    @staticmethod
+    async def handle_schedule_search(update: Update, search_query: str):
+        """Handle schedule search query"""
+        user_id = str(update.effective_user.id)
+        
+        try:
+            # Search for groups
+            matching_groups = await schedule_service.search_groups(search_query)
+            
+            if matching_groups:
+                text = f"🔍 Найдено групп по запросу '{search_query}':\n\n"
+                
+                keyboard = []
+                for group in matching_groups[:10]:  # Limit to 10 results
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"📅 {group}", 
+                            callback_data=f"schedule_group_{group.replace('/', '_')}"
+                        )
+                    ])
+                
+                keyboard.append([InlineKeyboardButton("🔍 Новый поиск", callback_data="student_search_schedule")])
+                keyboard.append([InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(text, reply_markup=reply_markup)
+                
+                # Clear search state
+                USER_STATES[user_id] = ""
+                
+            else:
+                text = (
+                    f"🔍 По запросу '{search_query}' ничего не найдено.\n\n"
+                    f"💡 Попробуйте:\n"
+                    f"• Проверить правильность написания\n"
+                    f"• Использовать сокращение (например: ДИС, ДД, ДБ)\n"
+                    f"• Указать год (например: 241, 232)"
+                )
+                
+                keyboard = [
+                    [InlineKeyboardButton("🔍 Попробовать еще раз", callback_data="student_search_schedule")],
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(text, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error in schedule search: {e}")
+            await update.message.reply_text(
+                "❌ Ошибка поиска. Попробуйте еще раз.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ])
+            )
+    
+    @staticmethod
+    async def handle_group_input(update: Update, group_input: str):
+        """Handle manual group input"""
+        user_id = str(update.effective_user.id)
+        
+        try:
+            # Search for the exact group or similar
+            matching_groups = await schedule_service.search_groups(group_input)
+            
+            if matching_groups:
+                if len(matching_groups) == 1:
+                    # Exact match, set the group directly
+                    await TelegramBotHandler.set_student_group_by_name(user_id, matching_groups[0])
+                    text = f"✅ Группа {matching_groups[0]} установлена!"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton("📅 Мое расписание", callback_data="student_my_schedule")],
+                        [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                    ]
+                else:
+                    # Multiple matches, let user choose
+                    text = f"Найдено несколько групп:\n\n"
+                    
+                    keyboard = []
+                    for group in matching_groups[:5]:  # Limit to 5
+                        keyboard.append([
+                            InlineKeyboardButton(
+                                f"✅ {group}", 
+                                callback_data=f"select_group_{group.replace('/', '_')}"
+                            )
+                        ])
+                    
+                    keyboard.append([InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(text, reply_markup=reply_markup)
+                
+            else:
+                text = (
+                    f"❌ Группа '{group_input}' не найдена.\n\n"
+                    f"Попробуйте выбрать из списка по курсам."
+                )
+                
+                keyboard = [
+                    [InlineKeyboardButton("📋 Выбрать по курсу", callback_data="student_set_group")],
+                    [InlineKeyboardButton("↩️ Назад", callback_data="back_to_student")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(text, reply_markup=reply_markup)
+            
+            # Clear state
+            USER_STATES[user_id] = ""
+            
+        except Exception as e:
+            logger.error(f"Error handling group input: {e}")
+            await update.message.reply_text(
+                "❌ Ошибка обработки. Попробуйте еще раз."
+            )
+    
+    @staticmethod
+    async def set_student_group_by_name(user_id: str, group_name: str):
+        """Helper method to set student group by name"""
+        try:
+            # Get or create student group
+            group = await sync_to_async(StudentGroup.objects.get_or_create)(
+                name=group_name,
+                defaults={
+                    'course': '1 курс',  # Default
+                    'faculty': schedule_service.extract_faculty_from_group(group_name),
+                    'is_active': True
+                }
+            )
+            group = group[0]
+            
+            # Get telegram user
+            telegram_user = await sync_to_async(TelegramUser.objects.get)(telegram_id=user_id)
+            
+            # Get or create student profile
+            student_profile, created = await sync_to_async(StudentProfile.objects.get_or_create)(
+                telegram_user=telegram_user,
+                defaults={'group': group}
+            )
+            
+            if not created:
+                student_profile.group = group
+                await sync_to_async(student_profile.save)()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error setting student group: {e}")
+            return False
+    
+    @staticmethod
     async def handle_admission_message(update: Update, message_text: str):
         """Handle admission office chat message"""
         user_id = str(update.effective_user.id)
