@@ -5,8 +5,9 @@ from telegram.ext import Application, MessageHandler, CallbackQueryHandler, Comm
 from django.conf import settings
 from channels.layers import get_channel_layer
 from asgiref.sync import sync_to_async
-from .models import Message, TelegramUser, ChatSession, Document, ApplicantProfile
+from .models import Message, TelegramUser, ChatSession, Document, ApplicantProfile, StudentProfile, StudentGroup
 from .services.openai_service import UniversityAIService
+from .services.schedule_service import ScheduleService
 import json
 
 logger = logging.getLogger(__name__)
