@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
 channel_layer = get_channel_layer()
 ai_service = UniversityAIService()
+schedule_service = ScheduleService()
 
 # Bot states
 USER_STATES = {}
