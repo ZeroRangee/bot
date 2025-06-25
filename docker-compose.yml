@@ -9,11 +9,16 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - mveu_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    # Podman specific: Enable systemd integration
+    labels:
+      - "io.containers.autoupdate=registry"
 
   # PostgreSQL Database (optional - can use SQLite instead)
   postgres:
@@ -27,6 +32,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mveu_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mveu_user -d mveu_bot"]
       interval: 10s
@@ -34,6 +41,8 @@ services:
       retries: 5
     profiles:
       - postgres  # Only start with --profile postgres
+    labels:
+      - "io.containers.autoupdate=registry"
 
   # Django Application
   web:
@@ -44,7 +53,7 @@ services:
     environment:
       # Django settings
       DEBUG: "True"
-      SECRET_KEY: "django-insecure-docker-development-key-change-in-production"
+      SECRET_KEY: "django-insecure-podman-development-key-change-in-production"
       ALLOWED_HOSTS: "*"
       
       # Database settings (uncomment for PostgreSQL)
@@ -59,10 +68,15 @@ services:
       # OpenAI settings (add your key here)
       OPENAI_API_KEY: ""
       
+      # Podman specific settings
+      CONTAINER_HOST: "unix:///run/user/1000/podman/podman.sock"
+      
     volumes:
       - ./backend:/app
       - static_volume:/app/static
       - media_volume:/app/media
+    networks:
+      - mveu_network
     depends_on:
       redis:
         condition: service_healthy
@@ -74,6 +88,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    labels:
+      - "io.containers.autoupdate=registry"
+    # Podman specific: Security options
+    security_opt:
+      - no-new-privileges:true
+    # Podman specific: User mapping for rootless
+    user: "${PODMAN_USERNS_UID:-1000}:${PODMAN_USERNS_GID:-1000}"
 
   # Nginx for serving static files and reverse proxy (optional)
   nginx:
@@ -85,6 +106,8 @@ services:
       - ./docker/nginx.conf:/etc/nginx/nginx.conf
       - static_volume:/app/static
       - media_volume:/app/media
+    networks:
+      - mveu_network
     depends_on:
       - web
     healthcheck:
@@ -92,13 +115,44 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    labels:
+      - "io.containers.autoupdate=registry"
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres_data:
+    driver: local
+    # Podman specific: Use local storage
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/postgres
   redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/redis
   static_volume:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/static
   media_volume:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/media
 
 networks:
-  default:
-    name: mveu_network
+  mveu_network:
+    driver: bridge
+    # Podman specific: Use CNI networking
+    driver_opts:
+      com.docker.network.bridge.name: mveu_br
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
