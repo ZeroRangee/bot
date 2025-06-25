@@ -184,6 +184,9 @@ class TelegramBotHandler:
             "Отправьте документы через бота или приходите лично в приемную комиссию."
         )
         
+        # Set state for document upload
+        user_id = str(query.from_user.id)
+        
         keyboard = [
             [InlineKeyboardButton("📤 Отправить документы", callback_data="applicant_upload_docs")],
             [InlineKeyboardButton("↩️ Назад к меню абитуриента", callback_data="back_to_applicant")]
@@ -191,18 +194,6 @@ class TelegramBotHandler:
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(text=text, reply_markup=reply_markup)
-        
-        # Set state for document upload
-        user_id = str(query.from_user.id)
-        if data == "applicant_upload_docs":
-            USER_STATES[user_id] = "uploading_docs"
-            upload_text = (
-                "📤 Загрузка документов\n\n"
-                "Отправьте ваши документы по одному.\n"
-                "Поддерживаются: фото, PDF, DOC, DOCX\n\n"
-                "После отправки каждого документа укажите его тип."
-            )
-            await query.message.reply_text(upload_text)
     
     @staticmethod
     async def start_admission_chat(query):
