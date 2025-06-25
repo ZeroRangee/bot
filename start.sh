@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MVEU Telegram Bot - Universal Startup Script
+# MVEU Telegram Bot - Universal Startup Script with Podman
 # Работает на Linux, macOS, Windows (через WSL/Git Bash)
 
 set -e
@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "========================================"
-echo -e "${BLUE}🎓 MVEU Telegram Bot - Universal Launcher${NC}"
+echo -e "${BLUE}🎓 MVEU Telegram Bot - Podman Launcher${NC}"
 echo "========================================"
 
 # Function to check if command exists
@@ -21,21 +21,35 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to check Docker/Docker Compose
-check_docker() {
-    if ! command_exists docker; then
-        echo -e "${RED}❌ Docker не установлен${NC}"
-        echo -e "${YELLOW}📋 Установите Docker с https://docker.com/get-started${NC}"
+# Function to check Podman/Podman Compose
+check_podman() {
+    if ! command_exists podman; then
+        echo -e "${RED}❌ Podman не установлен${NC}"
+        echo -e "${YELLOW}📋 Установите Podman:${NC}"
+        echo "  Ubuntu/Debian: sudo apt install podman"
+        echo "  CentOS/RHEL:   sudo dnf install podman"
+        echo "  macOS:         brew install podman"
+        echo "  Windows:       https://podman.io/getting-started/installation"
         exit 1
     fi
     
-    if ! command_exists docker-compose && ! docker compose version >/dev/null 2>&1; then
-        echo -e "${RED}❌ Docker Compose не установлен${NC}"
-        echo -e "${YELLOW}📋 Установите Docker Compose${NC}"
+    # Check for podman-compose or podman compose
+    COMPOSE_CMD=""
+    if command_exists podman-compose; then
+        COMPOSE_CMD="podman-compose"
+        echo -e "${GREEN}✅ Podman и podman-compose найдены${NC}"
+    elif podman compose version >/dev/null 2>&1; then
+        COMPOSE_CMD="podman compose"
+        echo -e "${GREEN}✅ Podman со встроенным compose найден${NC}"
+    else
+        echo -e "${RED}❌ Podman Compose не установлен${NC}"
+        echo -e "${YELLOW}📋 Установите podman-compose:${NC}"
+        echo "  pip3 install podman-compose"
+        echo "  или используйте встроенный: podman compose"
         exit 1
     fi
     
-    echo -e "${GREEN}✅ Docker и Docker Compose найдены${NC}"
+    export COMPOSE_CMD
 }
 
 # Function to setup environment
@@ -69,6 +83,13 @@ WDS_SOCKET_PORT=3000
 EOF
         echo -e "${GREEN}✅ Создан frontend/.env${NC}"
     fi
+    
+    # Setup Podman network if not exists
+    if ! podman network exists mveu_network 2>/dev/null; then
+        echo -e "${BLUE}🌐 Создание Podman сети...${NC}"
+        podman network create mveu_network
+        echo -e "${GREEN}✅ Сеть mveu_network создана${NC}"
+    fi
 }
 
 # Function to show menu
@@ -78,39 +99,46 @@ show_menu() {
     echo "1. 🚀 Полный запуск (Django + Redis + Nginx)"
     echo "2. 🔧 Только Django + Redis (без Nginx)"
     echo "3. 🐘 С PostgreSQL (вместо SQLite)"
-    echo "4. 🛑 Остановить все сервисы"
-    echo "5. 🔄 Перезапустить сервисы"
-    echo "6. 📋 Показать логи"
-    echo "7. 🧹 Очистить данные"
+    echo "4. 🏠 Rootless режим (без sudo)"
+    echo "5. 🛑 Остановить все сервисы"
+    echo "6. 🔄 Перезапустить сервисы"
+    echo "7. 📋 Показать логи"
+    echo "8. 🧹 Очистить данные"
+    echo "9. 🔍 Статус сервисов"
     echo ""
-    read -p "Введите номер (1-7): " choice
+    read -p "Введите номер (1-9): " choice
 }
 
 # Function to start services
 start_services() {
     local profile=$1
-    local compose_cmd="docker-compose"
+    local rootless=$2
     
-    # Check if docker compose (new syntax) is available
-    if docker compose version >/dev/null 2>&1; then
-        compose_cmd="docker compose"
+    echo -e "${BLUE}🚀 Запуск сервисов с Podman...${NC}"
+    
+    if [ "$rootless" = "true" ]; then
+        echo -e "${YELLOW}🏠 Запуск в rootless режиме${NC}"
+        # Enable lingering for rootless containers
+        loginctl enable-linger $USER 2>/dev/null || true
     fi
-    
-    echo -e "${BLUE}🚀 Запуск сервисов...${NC}"
     
     case $profile in
         "full")
-            $compose_cmd up -d --build
+            $COMPOSE_CMD up -d --build
             ;;
         "minimal")
-            $compose_cmd up -d --build web redis
+            $COMPOSE_CMD up -d --build web redis
             ;;
         "postgres")
-            $compose_cmd --profile postgres up -d --build
+            $COMPOSE_CMD --profile postgres up -d --build
+            ;;
+        "rootless")
+            # Force rootless mode
+            PODMAN_ROOTLESS=1 $COMPOSE_CMD up -d --build web redis
             ;;
     esac
     
-    echo -e "${GREEN}✅ Сервисы запущены!${NC}"
+    echo -e "${GREEN}✅ Сервисы запущены с Podman!${NC}"
     show_urls
     show_status
 }
@@ -132,79 +160,75 @@ show_urls() {
 
 # Function to show status
 show_status() {
-    local compose_cmd="docker-compose"
+    echo -e "${BLUE}📊 Статус контейнеров Podman:${NC}"
+    $COMPOSE_CMD ps
     
-    if docker compose version >/dev/null 2>&1; then
-        compose_cmd="docker compose"
-    fi
-    
-    echo -e "${BLUE}📊 Статус сервисов:${NC}"
-    $compose_cmd ps
+    echo ""
+    echo -e "${BLUE}🔍 Podman контейнеры:${NC}"
+    podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 }
 
 # Function to show logs
 show_logs() {
-    local compose_cmd="docker-compose"
-    
-    if docker compose version >/dev/null 2>&1; then
-        compose_cmd="docker compose"
-    fi
-    
     echo -e "${BLUE}📋 Логи сервисов (нажмите Ctrl+C для выхода):${NC}"
-    $compose_cmd logs -f
+    $COMPOSE_CMD logs -f
 }
 
 # Function to stop services
 stop_services() {
-    local compose_cmd="docker-compose"
-    
-    if docker compose version >/dev/null 2>&1; then
-        compose_cmd="docker compose"
-    fi
-    
-    echo -e "${YELLOW}🛑 Остановка сервисов...${NC}"
-    $compose_cmd down
+    echo -e "${YELLOW}🛑 Остановка сервисов Podman...${NC}"
+    $COMPOSE_CMD down
     echo -e "${GREEN}✅ Сервисы остановлены${NC}"
 }
 
 # Function to restart services
 restart_services() {
-    local compose_cmd="docker-compose"
-    
-    if docker compose version >/dev/null 2>&1; then
-        compose_cmd="docker compose"
-    fi
-    
-    echo -e "${YELLOW}🔄 Перезапуск сервисов...${NC}"
-    $compose_cmd restart
+    echo -e "${YELLOW}🔄 Перезапуск сервисов Podman...${NC}"
+    $COMPOSE_CMD restart
     echo -e "${GREEN}✅ Сервисы перезапущены${NC}"
     show_status
 }
 
 # Function to clean data
 clean_data() {
-    local compose_cmd="docker-compose"
-    
-    if docker compose version >/dev/null 2>&1; then
-        compose_cmd="docker compose"
-    fi
-    
     echo -e "${RED}⚠️  ВНИМАНИЕ: Это удалит ВСЕ данные!${NC}"
     read -p "Вы уверены? (y/N): " confirm
     
     if [[ $confirm =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}🧹 Очистка данных...${NC}"
-        $compose_cmd down -v --remove-orphans
-        docker system prune -f
+        echo -e "${YELLOW}🧹 Очистка данных Podman...${NC}"
+        $COMPOSE_CMD down -v --remove-orphans
+        
+        # Clean Podman system
+        podman system prune -f
+        podman volume prune -f
+        
+        # Remove network if exists
+        podman network rm mveu_network 2>/dev/null || true
+        
         echo -e "${GREEN}✅ Данные очищены${NC}"
     else
         echo -e "${BLUE}ℹ️  Отменено${NC}"
     fi
 }
 
+# Function to show podman info
+show_podman_info() {
+    echo -e "${BLUE}🔍 Информация о Podman:${NC}"
+    echo "Версия Podman: $(podman --version)"
+    if command_exists podman-compose; then
+        echo "Версия Compose: $(podman-compose --version)"
+    fi
+    echo ""
+    echo -e "${BLUE}🌐 Сети Podman:${NC}"
+    podman network ls
+    echo ""
+    echo -e "${BLUE}💾 Volumes Podman:${NC}"
+    podman volume ls
+}
+
 # Main execution
 main() {
-    check_docker
+    check_podman
     setup_environment
     
     show_menu
@@ -220,16 +244,23 @@ main() {
             start_services "postgres"
             ;;
         4)
-            stop_services
+            start_services "rootless" "true"
             ;;
         5)
-            restart_services
+            stop_services
             ;;
         6)
-            show_logs
+            restart_services
             ;;
         7)
+            show_logs
+            ;;
+        8)
             clean_data
+            ;;
+        9)
+            show_status
+            show_podman_info
             ;;
         *)
             echo -e "${RED}❌ Неверный выбор${NC}"

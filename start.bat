@@ -1,32 +1,41 @@
 @echo off
 chcp 65001 >nul
-title MVEU Telegram Bot - Windows Launcher
+title MVEU Telegram Bot - Podman Windows Launcher
 
 echo ========================================
-echo 🎓 MVEU Telegram Bot - Windows Launcher  
+echo 🎓 MVEU Telegram Bot - Podman Launcher  
 echo ========================================
 
-REM Check if Docker is installed
-docker --version >nul 2>&1
+REM Check if Podman is installed
+podman --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ❌ Docker не установлен
-    echo 📋 Установите Docker Desktop с https://docker.com/get-started
+    echo ❌ Podman не установлен
+    echo 📋 Установите Podman Desktop с https://podman.io/getting-started/installation
+    echo    или используйте WSL2 с Linux установкой
     pause
     exit /b 1
 )
 
-REM Check if Docker Compose is available
-docker-compose --version >nul 2>&1
-if %errorlevel% neq 0 (
-    docker compose version >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo ❌ Docker Compose не установлен
+echo ✅ Podman найден
+
+REM Check for podman-compose
+set COMPOSE_CMD=
+podman-compose --version >nul 2>&1
+if %errorlevel% equ 0 (
+    set COMPOSE_CMD=podman-compose
+    echo ✅ podman-compose найден
+) else (
+    podman compose version >nul 2>&1
+    if %errorlevel% equ 0 (
+        set COMPOSE_CMD=podman compose
+        echo ✅ встроенный podman compose найден
+    ) else (
+        echo ❌ Podman Compose не найден
+        echo 📋 Установите: pip install podman-compose
         pause
         exit /b 1
     )
 )
-
-echo ✅ Docker найден
 
 REM Setup environment files
 if not exist "backend\.env" (
@@ -54,85 +63,117 @@ if not exist "frontend\.env" (
     echo ✅ Создан frontend\.env
 )
 
+REM Setup Podman network
+podman network exists mveu_network >nul 2>&1
+if %errorlevel% neq 0 (
+    echo 🌐 Создание Podman сети...
+    podman network create mveu_network
+    echo ✅ Сеть mveu_network создана
+)
+
 echo.
 echo 🎯 Выберите режим запуска:
 echo 1. 🚀 Полный запуск (Django + Redis + Nginx)
 echo 2. 🔧 Только Django + Redis (без Nginx)
 echo 3. 🐘 С PostgreSQL (вместо SQLite)
-echo 4. 🛑 Остановить все сервисы
-echo 5. 🔄 Перезапустить сервисы
-echo 6. 📋 Показать логи
-echo 7. 🧹 Очистить данные
+echo 4. 🏠 Rootless режим (рекомендуется для Windows)
+echo 5. 🛑 Остановить все сервисы
+echo 6. 🔄 Перезапустить сервисы
+echo 7. 📋 Показать логи
+echo 8. 🧹 Очистить данные
+echo 9. 🔍 Статус сервисов
 echo.
 
-set /p choice="Введите номер (1-7): "
+set /p choice="Введите номер (1-9): "
 
 if "%choice%"=="1" goto full_start
 if "%choice%"=="2" goto minimal_start  
 if "%choice%"=="3" goto postgres_start
-if "%choice%"=="4" goto stop_services
-if "%choice%"=="5" goto restart_services
-if "%choice%"=="6" goto show_logs
-if "%choice%"=="7" goto clean_data
+if "%choice%"=="4" goto rootless_start
+if "%choice%"=="5" goto stop_services
+if "%choice%"=="6" goto restart_services
+if "%choice%"=="7" goto show_logs
+if "%choice%"=="8" goto clean_data
+if "%choice%"=="9" goto show_status
 goto invalid_choice
 
 :full_start
-echo 🚀 Запуск всех сервисов...
-docker-compose up -d --build
-if %errorlevel% neq 0 docker compose up -d --build
+echo 🚀 Запуск всех сервисов с Podman...
+%COMPOSE_CMD% up -d --build
 goto show_info
 
 :minimal_start
-echo 🔧 Запуск Django + Redis...
-docker-compose up -d --build web redis
-if %errorlevel% neq 0 docker compose up -d --build web redis
+echo 🔧 Запуск Django + Redis с Podman...
+%COMPOSE_CMD% up -d --build web redis
 goto show_info
 
 :postgres_start
 echo 🐘 Запуск с PostgreSQL...
-docker-compose --profile postgres up -d --build
-if %errorlevel% neq 0 docker compose --profile postgres up -d --build
+%COMPOSE_CMD% --profile postgres up -d --build
+goto show_info
+
+:rootless_start
+echo 🏠 Запуск в rootless режиме...
+set PODMAN_ROOTLESS=1
+%COMPOSE_CMD% up -d --build web redis
 goto show_info
 
 :stop_services
-echo 🛑 Остановка сервисов...
-docker-compose down
-if %errorlevel% neq 0 docker compose down
+echo 🛑 Остановка сервисов Podman...
+%COMPOSE_CMD% down
 echo ✅ Сервисы остановлены
 goto end
 
 :restart_services
-echo 🔄 Перезапуск сервисов...
-docker-compose restart
-if %errorlevel% neq 0 docker compose restart
+echo 🔄 Перезапуск сервисов Podman...
+%COMPOSE_CMD% restart
 echo ✅ Сервисы перезапущены
-docker-compose ps
-if %errorlevel% neq 0 docker compose ps
+%COMPOSE_CMD% ps
 goto end
 
 :show_logs
 echo 📋 Логи сервисов (нажмите Ctrl+C для выхода):
-docker-compose logs -f
-if %errorlevel% neq 0 docker compose logs -f
+%COMPOSE_CMD% logs -f
 goto end
 
 :clean_data
 echo ⚠️  ВНИМАНИЕ: Это удалит ВСЕ данные!
 set /p confirm="Вы уверены? (y/N): "
 if /i "%confirm%"=="y" (
-    echo 🧹 Очистка данных...
-    docker-compose down -v --remove-orphans
-    if %errorlevel% neq 0 docker compose down -v --remove-orphans
-    docker system prune -f
+    echo 🧹 Очистка данных Podman...
+    %COMPOSE_CMD% down -v --remove-orphans
+    podman system prune -f
+    podman volume prune -f
+    podman network rm mveu_network 2>nul
     echo ✅ Данные очищены
 ) else (
     echo ℹ️  Отменено
 )
 goto end
 
+:show_status
+echo 📊 Статус контейнеров Podman:
+%COMPOSE_CMD% ps
+echo.
+echo 🔍 Podman контейнеры:
+podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+echo.
+echo 🔍 Информация о Podman:
+podman --version
+if exist podman-compose (
+    podman-compose --version
+)
+echo.
+echo 🌐 Сети Podman:
+podman network ls
+echo.
+echo 💾 Volumes Podman:
+podman volume ls
+goto end
+
 :show_info
 echo.
-echo ✅ Сервисы запущены!
+echo ✅ Сервисы запущены с Podman!
 echo.
 echo 🌐 Доступные URL:
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -145,8 +186,7 @@ echo ━━━━━━━━━━━━━━━━━━━━━━━━━
 echo 👤 Логин админа: admin / admin123
 echo.
 echo 📊 Статус сервисов:
-docker-compose ps
-if %errorlevel% neq 0 docker compose ps
+%COMPOSE_CMD% ps
 goto end
 
 :invalid_choice
