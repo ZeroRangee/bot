@@ -1,8 +1,8 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from .models import Message
-from .telegram_bot import send_telegram_message
+from .models import Message, TelegramUser
+from .telegram_bot import bot
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -40,10 +40,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Send message to Telegram if telegram_user_id is provided
             if telegram_user_id:
-                telegram_success = await send_telegram_message(telegram_user_id, message_text)
-                if not telegram_success:
+                try:
+                    await bot.send_message(chat_id=telegram_user_id, text=message_text)
+                except Exception as e:
                     await self.send(text_data=json.dumps({
-                        'error': 'Failed to send message to Telegram'
+                        'error': f'Failed to send message to Telegram: {str(e)}'
                     }))
                     return
 
@@ -77,13 +78,70 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'message_id': event['message_id']
         }))
 
+    # Handle admin chat specific events
+    async def new_chat_session(self, event):
+        """Handle new chat session notification"""
+        await self.send(text_data=json.dumps({
+            'type': 'new_chat_session',
+            'session_id': event['session_id'],
+            'user_info': event['user_info'],
+            'created_at': event['created_at']
+        }))
+
+    async def telegram_message(self, event):
+        """Handle telegram message for admin interface"""
+        await self.send(text_data=json.dumps({
+            'type': 'telegram_message',
+            'message': event['message'],
+            'source': event['source'],
+            'direction': event['direction'],
+            'telegram_user_id': event['telegram_user_id'],
+            'telegram_username': event['telegram_username'],
+            'created_at': event['created_at'],
+            'message_id': event['message_id']
+        }))
+
     @database_sync_to_async
     def save_message(self, text, source, direction, telegram_user_id=None, telegram_username=None, telegram_message_id=None):
+        telegram_user = None
+        if telegram_user_id:
+            try:
+                telegram_user = TelegramUser.objects.get(telegram_id=telegram_user_id)
+            except TelegramUser.DoesNotExist:
+                pass
+        
         return Message.objects.create(
             text=text,
             source=source,
             direction=direction,
-            telegram_user_id=telegram_user_id,
-            telegram_username=telegram_username,
+            telegram_user=telegram_user,
             telegram_message_id=telegram_message_id
         )
+
+class AdminChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        # Join admin chat group
+        await self.channel_layer.group_add(
+            'admin_chat',
+            self.channel_name
+        )
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        # Leave admin chat group
+        await self.channel_layer.group_discard(
+            'admin_chat',
+            self.channel_name
+        )
+
+    async def receive(self, text_data):
+        # Handle admin messages if needed
+        pass
+
+    async def new_chat_session(self, event):
+        """Forward new chat session to admin"""
+        await self.send(text_data=json.dumps(event))
+
+    async def telegram_message(self, event):
+        """Forward telegram messages to admin"""
+        await self.send(text_data=json.dumps(event))
