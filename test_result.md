@@ -283,15 +283,18 @@ backend:
 
   - task: "WebSocket consumers для админского чата"
     implemented: true
-    working: "NA"
+    working: true
     file: "chat/consumers.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "ChatConsumer и AdminChatConsumer созданы, требуется тестирование WebSocket соединений"
+      - working: true
+        agent: "testing"
+        comment: "WebSocket consumers работают корректно. Тесты показали, что сообщения успешно отправляются и принимаются через WebSocket. Также проверена интеграция с Redis для Channels."
 
 frontend:
   - task: "Веб-админка для чатов приемной комиссии"
