@@ -79,33 +79,24 @@ class UniversityAIService:
         return prompt
     
     def get_ai_response(self, user_question: str) -> str:
-        """Get AI response for user question"""
-        try:
-            # Get university context
-            university_data = self.get_university_context()
-            
-            # Create prompt
-            prompt = self.create_context_prompt(university_data, user_question)
-            
-            # Get GPT response
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",  # Cost-effective model
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Ты - знающий ассистент для МВЭУ. Предоставляй точную и полезную информацию на основе предоставленного контекста."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=1000,
-                temperature=0.7
-            )
-            
-            return response.choices[0].message.content
-        
-        except Exception as e:
-            logger.error(f"OpenAI API error: {str(e)}")
-            return "Извините, у меня сейчас проблемы с получением информации. Попробуйте позже или свяжитесь с приемной комиссией."
+        """Get AI response for user question (TEMPORARY MOCK)"""
+        # Temporary mock response while OpenAI is disabled
+        return f"""
+🤖 Демо-ответ ИИ помощника МВЭУ:
+
+Вы спросили: "{user_question}"
+
+📚 МВЭУ предлагает следующие направления подготовки:
+• Экономика и управление
+• Информационные технологии
+• Международные отношения
+• Юриспруденция
+• Менеджмент
+
+📞 Для получения актуальной информации обратитесь:
+• В приемную комиссию через бота (кнопка "Связаться с приемной комиссией")
+• По телефону: +7 (495) 123-45-67
+• Email: admission@mveu.ru
+
+💡 Это демо-ответ. ИИ функционал будет активирован после настройки API ключа.
+        """.strip()
