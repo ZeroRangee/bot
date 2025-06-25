@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админка чатов - МВЭУ</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .message-incoming {
+            background-color: #e5e7eb;
+            margin-left: 0;
+            margin-right: 20%;
+        }
+        .message-outgoing {
+            background-color: #3b82f6;
+            color: white;
+            margin-left: 20%;
+            margin-right: 0;
+        }
+        .chat-session {
+            transition: all 0.3s ease;
+        }
+        .chat-session:hover {
+            background-color: #f3f4f6;
+        }
+        .chat-session.active {
+            background-color: #dbeafe;
+            border-left: 4px solid #3b82f6;
+        }
+        .unread-count {
+            background-color: #ef4444;
+            color: white;
+            border-radius: 50%;
+            min-width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4 max-w-7xl">
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div class="bg-blue-600 text-white p-4">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-2xl font-bold">
+                        🎓 Админка чатов МВЭУ
+                    </h1>
+                    <div class="flex space-x-4">
+                        <button onclick="refreshSessions()" class="bg-blue-500 hover:bg-blue-700 px-4 py-2 rounded">
+                            🔄 Обновить
+                        </button>
+                        <button onclick="showBroadcastModal()" class="bg-green-500 hover:bg-green-700 px-4 py-2 rounded">
+                            📢 Рассылка
+                        </button>
+                        <button onclick="showStatsModal()" class="bg-purple-500 hover:bg-purple-700 px-4 py-2 rounded">
+                            📊 Статистика
+                        </button>
+                    </div>
+                </div>
+                <div id="connection-status" class="text-sm mt-2">
+                    Подключение...
+                </div>
+            </div>
+            
+            <div class="flex h-screen max-h-96">
+                <!-- Chat Sessions Panel -->
+                <div class="w-1/3 border-r border-gray-300 overflow-y-auto">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-semibold text-gray-800">Активные чаты</h3>
+                        <div class="text-sm text-gray-600">
+                            <span id="sessions-count">0</span> активных сессий
+                        </div>
+                    </div>
+                    <div id="chat-sessions-list">
+                        <!-- Chat sessions will be loaded here -->
+                    </div>
+                </div>
+                
+                <!-- Chat Messages Panel -->
+                <div class="w-2/3 flex flex-col">
+                    <div id="chat-header" class="p-4 border-b border-gray-200 bg-gray-50">
+                        <div class="text-gray-500">Выберите чат для просмотра сообщений</div>
+                    </div>
+                    
+                    <div id="messages-container" class="flex-1 overflow-y-auto p-4 bg-gray-50">
+                        <div id="messages-list">
+                            <!-- Messages will be loaded here -->
+                        </div>
+                    </div>
+                    
+                    <div id="message-input-container" class="p-4 border-t border-gray-300 bg-white" style="display: none;">
+                        <div class="flex gap-2">
+                            <input 
+                                type="text" 
+                                id="admin-message-input" 
+                                placeholder="Введите ответ абитуриенту..." 
+                                class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onkeypress="handleKeyPress(event)"
+                            >
+                            <button 
+                                onclick="sendAdminMessage()" 
+                                class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                Отправить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Broadcast Modal -->
+    <div id="broadcast-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg max-w-md w-full p-6">
+                <h3 class="text-lg font-semibold mb-4">📢 Рассылка сообщений</h3>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Кому отправить:</label>
+                    <select id="broadcast-target" class="w-full p-2 border border-gray-300 rounded">
+                        <option value="">Всем пользователям</option>
+                        <option value="applicant">Только абитуриентам</option>
+                        <option value="student">Только студентам</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Сообщение:</label>
+                    <textarea 
+                        id="broadcast-message" 
+                        rows="4" 
+                        class="w-full p-2 border border-gray-300 rounded"
+                        placeholder="Введите текст рассылки..."
+                    ></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-2">
+                    <button onclick="closeBroadcastModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                        Отмена
+                    </button>
+                    <button onclick="sendBroadcast()" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                        Отправить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div id="stats-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg max-w-2xl w-full p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold">📊 Статистика</h3>
+                    <button onclick="closeStatsModal()" class="text-gray-500 hover:text-gray-700">✕</button>
+                </div>
+                
+                <div id="stats-content">
+                    <!-- Stats will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let chatSocket = null;
+        let currentSessionId = null;
+        let currentUserId = null;
+        let chatSessions = [];
+        
+        // WebSocket connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/chat/`;
+            
+            chatSocket = new WebSocket(wsUrl);
+            
+            chatSocket.onopen = function(e) {
+                console.log('WebSocket connection opened');
+                document.getElementById('connection-status').textContent = 'Подключено ✓';
+            };
+            
+            chatSocket.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                if (data.type === 'new_chat_session') {
+                    addNewChatSession(data);
+                } else if (data.type === 'telegram_message') {
+                    handleIncomingMessage(data);
+                }
+            };
+            
+            chatSocket.onclose = function(e) {
+                console.log('WebSocket connection closed');
+                document.getElementById('connection-status').textContent = 'Отключено ❌';
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+        
+        // Load chat sessions
+        async function loadChatSessions() {
+            try {
+                const response = await fetch('/api/admin/sessions/');
+                const sessions = await response.json();
+                chatSessions = sessions;
+                displayChatSessions(sessions);
+                document.getElementById('sessions-count').textContent = sessions.length;
+            } catch (error) {
+                console.error('Error loading chat sessions:', error);
+            }
+        }
+        
+        function displayChatSessions(sessions) {
+            const container = document.getElementById('chat-sessions-list');
+            container.innerHTML = '';
+            
+            sessions.forEach(session => {
+                const sessionDiv = document.createElement('div');
+                sessionDiv.className = 'chat-session p-4 border-b border-gray-200 cursor-pointer';
+                sessionDiv.onclick = () => selectChatSession(session);
+                
+                const lastMessageTime = session.last_message_time ? 
+                    new Date(session.last_message_time).toLocaleTimeString('ru-RU') : 'Нет сообщений';
+                
+                sessionDiv.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-medium text-gray-900">
+                                ${session.telegram_user.first_name || session.telegram_user.username || 'Пользователь'}
+                            </div>
+                            <div class="text-sm text-gray-500">
+                                @${session.telegram_user.username || session.telegram_user.telegram_id}
+                            </div>
+                            <div class="text-xs text-gray-400">
+                                ${session.message_count} сообщений
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            ${lastMessageTime}
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(sessionDiv);
+            });
+        }
+        
+        function selectChatSession(session) {
+            currentSessionId = session.id;
+            currentUserId = session.telegram_user.telegram_id;
+            
+            // Update UI
+            document.querySelectorAll('.chat-session').forEach(el => el.classList.remove('active'));
+            event.target.closest('.chat-session').classList.add('active');
+            
+            // Update header
+            document.getElementById('chat-header').innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="font-semibold">
+                            ${session.telegram_user.first_name || session.telegram_user.username || 'Пользователь'}
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            @${session.telegram_user.username || session.telegram_user.telegram_id} • ${session.session_type_display}
+                        </div>
+                    </div>
+                    <button onclick="viewUserDocuments('${session.telegram_user.telegram_id}')" 
+                            class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300">
+                        📄 Документы
+                    </button>
+                </div>
+            `;
+            
+            // Show message input
+            document.getElementById('message-input-container').style.display = 'block';
+            
+            // Load messages
+            loadMessages(session.telegram_user.telegram_id);
+        }
+        
+        async function loadMessages(telegramUserId) {
+            try {
+                const response = await fetch(`/api/messages/?telegram_user_id=${telegramUserId}`);
+                const messages = await response.json();
+                displayMessages(messages.reverse());
+            } catch (error) {
+                console.error('Error loading messages:', error);
+            }
+        }
+        
+        function displayMessages(messages) {
+            const container = document.getElementById('messages-list');
+            container.innerHTML = '';
+            
+            messages.forEach(message => {
+                addMessageToUI(message);
+            });
+            
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function addMessageToUI(data) {
+            const messagesList = document.getElementById('messages-list');
+            const messageDiv = document.createElement('div');
+            
+            const isIncoming = data.direction === 'incoming';
+            const messageClass = isIncoming ? 'message-incoming' : 'message-outgoing';
+            
+            const time = new Date(data.created_at).toLocaleTimeString('ru-RU');
+            const senderName = isIncoming ? 
+                (data.telegram_user?.first_name || data.telegram_user?.username || 'Пользователь') : 
+                'Приемная комиссия';
+            
+            messageDiv.className = `mb-3 p-3 rounded-lg ${messageClass}`;
+            messageDiv.innerHTML = `
+                <div class="flex justify-between items-start mb-1">
+                    <span class="text-sm font-medium">${senderName}</span>
+                    <span class="text-xs opacity-70">${time}</span>
+                </div>
+                <div class="text-sm">${escapeHtml(data.text)}</div>
+            `;
+            
+            messagesList.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            document.getElementById('messages-container').scrollTop = 
+                document.getElementById('messages-container').scrollHeight;
+        }
+        
+        function handleIncomingMessage(data) {
+            // Add message to current chat if it's from the selected user
+            if (currentUserId && data.telegram_user_id === currentUserId) {
+                addMessageToUI(data);
+            }
+            
+            // Update session list (refresh unread counts, etc.)
+            loadChatSessions();
+        }
+        
+        async function sendAdminMessage() {
+            if (!currentUserId) return;
+            
+            const input = document.getElementById('admin-message-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            try {
+                const response = await fetch('/api/admin/send/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        telegram_user_id: currentUserId
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addMessageToUI(data);
+                    input.value = '';
+                } else {
+                    alert('Ошибка отправки сообщения');
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Ошибка отправки сообщения');
+            }
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendAdminMessage();
+            }
+        }
+        
+        // Broadcast functionality
+        function showBroadcastModal() {
+            document.getElementById('broadcast-modal').classList.remove('hidden');
+        }
+        
+        function closeBroadcastModal() {
+            document.getElementById('broadcast-modal').classList.add('hidden');
+            document.getElementById('broadcast-message').value = '';
+            document.getElementById('broadcast-target').value = '';
+        }
+        
+        async function sendBroadcast() {
+            const message = document.getElementById('broadcast-message').value.trim();
+            const target = document.getElementById('broadcast-target').value;
+            
+            if (!message) {
+                alert('Введите текст сообщения');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/broadcast/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        user_type: target
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(data.message);
+                    closeBroadcastModal();
+                } else {
+                    alert('Ошибка отправки рассылки');
+                }
+            } catch (error) {
+                console.error('Error sending broadcast:', error);
+                alert('Ошибка отправки рассылки');
+            }
+        }
+        
+        // Stats functionality
+        function showStatsModal() {
+            document.getElementById('stats-modal').classList.remove('hidden');
+            loadStats();
+        }
+        
+        function closeStatsModal() {
+            document.getElementById('stats-modal').classList.add('hidden');
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/admin/stats/');
+                const stats = await response.json();
+                displayStats(stats);
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        function displayStats(stats) {
+            const container = document.getElementById('stats-content');
+            container.innerHTML = `
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-blue-50 p-4 rounded">
+                        <div class="text-2xl font-bold text-blue-600">${stats.total_applicants}</div>
+                        <div class="text-sm text-blue-600">Всего абитуриентов</div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded">
+                        <div class="text-2xl font-bold text-green-600">${stats.total_documents}</div>
+                        <div class="text-sm text-green-600">Всего документов</div>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <h4 class="font-semibold mb-2">Активность за неделю:</h4>
+                    <div class="bg-gray-50 p-3 rounded">
+                        <div>Новые абитуриенты: ${stats.recent_activity.new_applicants}</div>
+                        <div>Загружено документов: ${stats.recent_activity.documents}</div>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <h4 class="font-semibold mb-2">Топ школ:</h4>
+                    <div class="space-y-2">
+                        ${stats.top_schools.map(school => `
+                            <div class="flex justify-between bg-gray-50 p-2 rounded">
+                                <span>${school.school_name}</span>
+                                <span class="font-medium">${school.count}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-2">Документы по типам:</h4>
+                    <div class="space-y-2">
+                        ${stats.documents_by_type.map(doc => `
+                            <div class="flex justify-between bg-gray-50 p-2 rounded">
+                                <span>${doc.document_type}</span>
+                                <span class="font-medium">${doc.count}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function viewUserDocuments(telegramUserId) {
+            try {
+                const response = await fetch(`/api/admin/user/${telegramUserId}/documents/`);
+                const documents = await response.json();
+                
+                let content = `<h4 class="font-semibold mb-2">Документы пользователя:</h4>`;
+                if (documents.length === 0) {
+                    content += '<p>Документы не загружены</p>';
+                } else {
+                    content += '<div class="space-y-2">';
+                    documents.forEach(doc => {
+                        content += `
+                            <div class="bg-gray-50 p-2 rounded">
+                                <div class="font-medium">${doc.document_type_display}</div>
+                                <div class="text-sm text-gray-600">${doc.file_name}</div>
+                                <div class="text-xs text-gray-500">${new Date(doc.created_at).toLocaleString('ru-RU')}</div>
+                            </div>
+                        `;
+                    });
+                    content += '</div>';
+                }
+                
+                alert(content); // Простое отображение, можно заменить на модальное окно
+            } catch (error) {
+                console.error('Error loading user documents:', error);
+            }
+        }
+        
+        function refreshSessions() {
+            loadChatSessions();
+        }
+        
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+        
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        // Initialize
+        window.onload = function() {
+            connectWebSocket();
+            loadChatSessions();
+        };
+        
+        // Cleanup on page unload
+        window.onbeforeunload = function() {
+            if (chatSocket) {
+                chatSocket.close();
+            }
+        };
+    </script>
+</body>
+</html>
