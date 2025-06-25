@@ -13,8 +13,8 @@ from urllib.parse import urljoin
 # Configuration
 BACKEND_URL = "https://91ea1d7f-61c5-49ae-80d2-ed08fe05f717.preview.emergentagent.com"
 API_URL = urljoin(BACKEND_URL, "/api/")
-WEBSOCKET_URL = "ws://localhost:8001/ws/chat/"
-ADMIN_WEBSOCKET_URL = "ws://localhost:8001/ws/admin-chat/"
+WEBSOCKET_URL = "wss://91ea1d7f-61c5-49ae-80d2-ed08fe05f717.preview.emergentagent.com/ws/chat/"
+ADMIN_WEBSOCKET_URL = "wss://91ea1d7f-61c5-49ae-80d2-ed08fe05f717.preview.emergentagent.com/ws/admin-chat/"
 BOT_TOKEN = "7510155003:AAHxU-SkAlo5yN1SoHVzom3b9LIZv-JhPK8"
 
 class TelegramBotChatAppTests(unittest.TestCase):
