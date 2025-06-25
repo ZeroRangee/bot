@@ -46,10 +46,10 @@ class UniversityWebScraper:
         """Scrape key university information pages"""
         pages_to_scrape = [
             f"{self.base_url}/",
-            f"{self.base_url}/abiturientu/",
-            f"{self.base_url}/abiturientu/priemnaya-komissiya/",
-            f"{self.base_url}/abiturientu/napravleniya-podgotovki/",
-            f"{self.base_url}/abiturientu/dokumenty/",
+            f"{self.base_url}/abiturient/",
+            f"{self.base_url}/admission/",
+            f"{self.base_url}/faculties/",
+            f"{self.base_url}/programs/",
             f"{self.base_url}/contacts/",
             f"{self.base_url}/about/",
         ]
