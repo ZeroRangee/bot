@@ -290,7 +290,7 @@ class TelegramBotChatAppTests(unittest.TestCase):
         """Test WebSocket connection to ws://localhost:8001/ws/chat/"""
         try:
             # Try to connect to the WebSocket endpoint
-            async with websockets.connect(self.ws_url, timeout=5) as websocket:
+            async with websockets.connect(self.ws_url) as websocket:
                 # Send a test message
                 test_message = {
                     "message": f"WebSocket test message {uuid.uuid4()}",
