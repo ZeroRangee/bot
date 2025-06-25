@@ -297,3 +297,107 @@ def telegram_webhook(request):
             return JsonResponse({'error': str(e)}, status=400)
     
     return JsonResponse({'status': 'method not allowed'}, status=405)
+
+@api_view(['GET'])
+def get_student_groups(request):
+    """Get list of student groups"""
+    try:
+        groups = StudentGroup.objects.filter(is_active=True).order_by('name')
+        serializer = StudentGroupSerializer(groups, many=True)
+        return Response(serializer.data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+async def get_group_schedule(request, group_name):
+    """Get schedule for specific group"""
+    try:
+        from datetime import datetime
+        
+        # Get date parameter or use today
+        date_str = request.GET.get('date')
+        if date_str:
+            date = datetime.strptime(date_str, '%Y-%m-%d')
+        else:
+            date = datetime.now()
+        
+        # Get schedule from service
+        schedule_service = ScheduleService()
+        schedule_data = await schedule_service.get_group_schedule(group_name, date)
+        
+        return Response({
+            'group': group_name,
+            'date': date.strftime('%Y-%m-%d'),
+            'schedule': schedule_data
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+async def search_groups(request):
+    """Search groups by query"""
+    try:
+        query = request.data.get('query', '')
+        
+        if not query:
+            return Response({'error': 'Query parameter is required'}, status=400)
+        
+        # Search groups
+        schedule_service = ScheduleService()
+        matching_groups = await schedule_service.search_groups(query)
+        
+        return Response({
+            'query': query,
+            'groups': matching_groups
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+def get_schedule_stats(request):
+    """Get schedule statistics"""
+    try:
+        # Basic stats
+        total_groups = StudentGroup.objects.filter(is_active=True).count()
+        total_students = StudentProfile.objects.count()
+        
+        # Groups by faculty
+        faculty_stats = StudentGroup.objects.filter(is_active=True).values('faculty').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # Groups by course
+        course_stats = StudentGroup.objects.filter(is_active=True).values('course').annotate(
+            count=Count('id')
+        ).order_by('course')
+        
+        return Response({
+            'total_groups': total_groups,
+            'total_students': total_students,
+            'faculty_stats': list(faculty_stats),
+            'course_stats': list(course_stats)
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+async def update_schedule_data(request):
+    """Update schedule data from external source"""
+    try:
+        schedule_service = ScheduleService()
+        
+        # Run update in background (in production, use Celery)
+        import asyncio
+        asyncio.create_task(schedule_service.update_schedule_data())
+        
+        return Response({
+            'message': 'Schedule update started',
+            'status': 'success'
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
