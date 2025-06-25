@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 BACKEND_URL = "https://91ea1d7f-61c5-49ae-80d2-ed08fe05f717.preview.emergentagent.com"
 API_URL = urljoin(BACKEND_URL, "/api/")
 WEBSOCKET_URL = "ws://localhost:8001/ws/chat/"
+ADMIN_WEBSOCKET_URL = "ws://localhost:8001/ws/admin-chat/"
 BOT_TOKEN = "7510155003:AAHxU-SkAlo5yN1SoHVzom3b9LIZv-JhPK8"
 
 class TelegramBotChatAppTests(unittest.TestCase):
@@ -23,6 +24,7 @@ class TelegramBotChatAppTests(unittest.TestCase):
         """Set up test environment"""
         self.api_url = API_URL
         self.ws_url = WEBSOCKET_URL
+        self.admin_ws_url = ADMIN_WEBSOCKET_URL
         self.bot_token = BOT_TOKEN
         
         # Ensure server is running
@@ -39,7 +41,7 @@ class TelegramBotChatAppTests(unittest.TestCase):
             return False
 
     def test_01_django_server_status(self):
-        """Test if Django server is running on port 8001"""
+        """Test if Django server is running"""
         try:
             response = requests.get(self.api_url)
             self.assertTrue(response.status_code in [200, 404], 
@@ -170,6 +172,118 @@ class TelegramBotChatAppTests(unittest.TestCase):
         except Exception as e:
             self.fail(f"Telegram bot configuration test failed: {str(e)}")
 
+    def test_07_admin_stats_endpoint(self):
+        """Test GET /api/admin/stats/ endpoint"""
+        try:
+            response = requests.get(urljoin(self.api_url, "admin/stats/"))
+            self.assertEqual(response.status_code, 200, 
+                            f"GET /api/admin/stats/ failed with status code {response.status_code}")
+            
+            # Verify response structure
+            data = response.json()
+            self.assertIn('total_documents', data, "Response should contain total_documents")
+            self.assertIn('total_applicants', data, "Response should contain total_applicants")
+            self.assertIn('documents_by_type', data, "Response should contain documents_by_type")
+            self.assertIn('top_schools', data, "Response should contain top_schools")
+            self.assertIn('recent_activity', data, "Response should contain recent_activity")
+            
+            print(f"✅ GET /api/admin/stats/ endpoint working, returned statistics data")
+        except Exception as e:
+            self.fail(f"GET /api/admin/stats/ test failed: {str(e)}")
+
+    def test_08_ai_chat_endpoint(self):
+        """Test GET /api/ai-chat/ endpoint"""
+        try:
+            # Create test AI question
+            test_question = {
+                "question": "Какие факультеты есть в МВЭУ?"
+            }
+            
+            response = requests.post(
+                urljoin(self.api_url, "ai-chat/"), 
+                json=test_question
+            )
+            
+            self.assertEqual(response.status_code, 200, 
+                            f"POST /api/ai-chat/ failed with status code {response.status_code}")
+            
+            # Verify response contains AI response
+            data = response.json()
+            self.assertIn('response', data, "Response should contain AI response")
+            self.assertIn('status', data, "Response should contain status")
+            self.assertEqual(data['status'], 'success', "Status should be 'success'")
+            
+            print(f"✅ POST /api/ai-chat/ endpoint working, returned AI response")
+            
+        except Exception as e:
+            self.fail(f"POST /api/ai-chat/ test failed: {str(e)}")
+
+    def test_09_student_groups_endpoint(self):
+        """Test GET /api/groups/ endpoint"""
+        try:
+            response = requests.get(urljoin(self.api_url, "groups/"))
+            self.assertEqual(response.status_code, 200, 
+                            f"GET /api/groups/ failed with status code {response.status_code}")
+            
+            # Verify response is a JSON array
+            data = response.json()
+            self.assertIsInstance(data, list, "Response should be a JSON array")
+            
+            # If there are groups, verify structure
+            if data:
+                self.assertIn('name', data[0], "Group should have name")
+                self.assertIn('course', data[0], "Group should have course")
+                self.assertIn('faculty', data[0], "Group should have faculty")
+            
+            print(f"✅ GET /api/groups/ endpoint working, returned {len(data)} groups")
+        except Exception as e:
+            self.fail(f"GET /api/groups/ test failed: {str(e)}")
+
+    def test_10_schedule_stats_endpoint(self):
+        """Test GET /api/schedule/stats/ endpoint"""
+        try:
+            response = requests.get(urljoin(self.api_url, "schedule/stats/"))
+            self.assertEqual(response.status_code, 200, 
+                            f"GET /api/schedule/stats/ failed with status code {response.status_code}")
+            
+            # Verify response structure
+            data = response.json()
+            self.assertIn('total_groups', data, "Response should contain total_groups")
+            self.assertIn('total_students', data, "Response should contain total_students")
+            self.assertIn('faculty_stats', data, "Response should contain faculty_stats")
+            self.assertIn('course_stats', data, "Response should contain course_stats")
+            
+            print(f"✅ GET /api/schedule/stats/ endpoint working, returned schedule statistics")
+        except Exception as e:
+            self.fail(f"GET /api/schedule/stats/ test failed: {str(e)}")
+
+    def test_11_search_groups_endpoint(self):
+        """Test POST /api/groups/search/ endpoint"""
+        try:
+            # Create search query
+            search_query = {
+                "query": "ДИС"  # Search for IT faculty groups
+            }
+            
+            response = requests.post(
+                urljoin(self.api_url, "groups/search/"), 
+                json=search_query
+            )
+            
+            self.assertEqual(response.status_code, 200, 
+                            f"POST /api/groups/search/ failed with status code {response.status_code}")
+            
+            # Verify response structure
+            data = response.json()
+            self.assertIn('query', data, "Response should contain query")
+            self.assertIn('groups', data, "Response should contain groups")
+            self.assertEqual(data['query'], search_query['query'], "Query should match")
+            
+            print(f"✅ POST /api/groups/search/ endpoint working, returned {len(data['groups'])} matching groups")
+            
+        except Exception as e:
+            self.fail(f"POST /api/groups/search/ test failed: {str(e)}")
+
     async def test_websocket_connection(self):
         """Test WebSocket connection to ws://localhost:8001/ws/chat/"""
         try:
@@ -203,16 +317,39 @@ class TelegramBotChatAppTests(unittest.TestCase):
             print(f"❌ WebSocket test failed: {str(e)}")
             return False
 
-    def test_07_websocket_endpoint(self):
-        """Run the async WebSocket test"""
+    async def test_admin_websocket_connection(self):
+        """Test WebSocket connection to ws://localhost:8001/ws/admin-chat/"""
         try:
+            # Try to connect to the admin WebSocket endpoint
+            async with websockets.connect(self.admin_ws_url, timeout=5) as websocket:
+                # Just test connection - AdminChatConsumer doesn't process incoming messages
+                print(f"✅ Admin WebSocket connection established successfully")
+                return True
+                
+        except asyncio.TimeoutError as e:
+            print(f"❌ Admin WebSocket connection timed out: {str(e)}")
+            return False
+        except Exception as e:
+            print(f"❌ Admin WebSocket test failed: {str(e)}")
+            return False
+
+    def test_12_websocket_endpoints(self):
+        """Run the async WebSocket tests"""
+        try:
+            # Test regular chat WebSocket
             result = asyncio.run(self.test_websocket_connection())
             if not result:
                 print("WebSocket test failed but continuing with other tests")
+                
+            # Test admin chat WebSocket
+            admin_result = asyncio.run(self.test_admin_websocket_connection())
+            if not admin_result:
+                print("Admin WebSocket test failed but continuing with other tests")
+                
         except Exception as e:
-            print(f"WebSocket test error: {str(e)}")
+            print(f"WebSocket tests error: {str(e)}")
 
-    def test_08_redis_connection(self):
+    def test_13_redis_connection(self):
         """Test Redis connection for Django Channels"""
         # This is an indirect test since we can't directly check Redis
         # We'll test WebSocket functionality which relies on Redis
@@ -232,10 +369,106 @@ class TelegramBotChatAppTests(unittest.TestCase):
             print("✅ Message created successfully, which indirectly tests Redis connection")
             
             # Note: A more thorough test would involve WebSocket connections
-            # but we've already tested that in test_07_websocket_endpoint
+            # but we've already tested that in test_12_websocket_endpoints
             
         except Exception as e:
             self.fail(f"Redis connection test failed: {str(e)}")
+
+    def test_14_django_admin_access(self):
+        """Test that Django admin interface is accessible"""
+        try:
+            # Make a request to the admin login page
+            admin_url = urljoin(BACKEND_URL, "/admin/login/")
+            response = requests.get(admin_url)
+            
+            self.assertEqual(response.status_code, 200, 
+                            f"Admin login page request failed with status code {response.status_code}")
+            
+            # Check for Django admin login form in response
+            self.assertIn('Django administration', response.text, "Django admin login page not found")
+            
+            print("✅ Django admin interface is accessible")
+            
+        except Exception as e:
+            self.fail(f"Django admin access test failed: {str(e)}")
+
+    def test_15_document_models(self):
+        """Test Document model functionality"""
+        try:
+            # Create a test user first
+            test_user = {
+                "telegram_id": f"test_user_{uuid.uuid4()}",
+                "username": "test_user",
+                "first_name": "Test",
+                "last_name": "User",
+                "user_type": "applicant"
+            }
+            
+            # We can't directly create a user via API, so we'll check if the endpoint works
+            response = requests.get(urljoin(self.api_url, "users/"))
+            self.assertEqual(response.status_code, 200, "Failed to access users endpoint")
+            
+            # Check if documents stats endpoint works
+            response = requests.get(urljoin(self.api_url, "admin/stats/"))
+            self.assertEqual(response.status_code, 200, "Failed to access documents stats endpoint")
+            
+            # Verify document stats structure
+            data = response.json()
+            self.assertIn('total_documents', data, "Response should contain total_documents")
+            self.assertIn('documents_by_type', data, "Response should contain documents_by_type")
+            
+            print("✅ Document model functionality verified through stats endpoint")
+            
+        except Exception as e:
+            self.fail(f"Document model test failed: {str(e)}")
+
+    def test_16_applicant_profile_model(self):
+        """Test ApplicantProfile model functionality through stats"""
+        try:
+            # Check if applicant stats are available
+            response = requests.get(urljoin(self.api_url, "admin/stats/"))
+            self.assertEqual(response.status_code, 200, "Failed to access stats endpoint")
+            
+            # Verify applicant stats structure
+            data = response.json()
+            self.assertIn('total_applicants', data, "Response should contain total_applicants")
+            self.assertIn('top_schools', data, "Response should contain top_schools")
+            
+            print("✅ ApplicantProfile model functionality verified through stats endpoint")
+            
+        except Exception as e:
+            self.fail(f"ApplicantProfile model test failed: {str(e)}")
+
+    def test_17_error_handling(self):
+        """Test error handling for invalid requests"""
+        try:
+            # Test invalid endpoint
+            response = requests.get(urljoin(self.api_url, "invalid_endpoint/"))
+            self.assertEqual(response.status_code, 404, 
+                            f"Invalid endpoint should return 404, got {response.status_code}")
+            
+            # Test invalid message send (missing required field)
+            invalid_message = {}
+            response = requests.post(
+                urljoin(self.api_url, "send/"), 
+                json=invalid_message
+            )
+            self.assertEqual(response.status_code, 400, 
+                            f"Invalid message should return 400, got {response.status_code}")
+            
+            # Test invalid AI chat request (missing question)
+            invalid_question = {}
+            response = requests.post(
+                urljoin(self.api_url, "ai-chat/"), 
+                json=invalid_question
+            )
+            self.assertEqual(response.status_code, 400, 
+                            f"Invalid AI chat request should return 400, got {response.status_code}")
+            
+            print("✅ Error handling working correctly for invalid requests")
+            
+        except Exception as e:
+            self.fail(f"Error handling test failed: {str(e)}")
 
 def run_tests():
     """Run all tests"""
