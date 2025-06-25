@@ -139,8 +139,12 @@ class TelegramBotHandler:
             await TelegramBotHandler.start_ai_chat(query)
         elif data == "applicant_send_docs":
             await TelegramBotHandler.show_document_requirements(query)
+        elif data == "applicant_upload_docs":
+            await TelegramBotHandler.start_document_upload(query)
         elif data == "applicant_contact_admission":
             await TelegramBotHandler.start_admission_chat(query)
+        elif data.startswith("doc_type_"):
+            await TelegramBotHandler.handle_document_type_selection(query, data)
     
     @staticmethod
     async def start_ai_chat(query):
