@@ -22,7 +22,7 @@ services:
     environment:
       POSTGRES_DB: mveu_bot
       POSTGRES_USER: mveu_user
-      POSTGRES_PASSWORD: mveu_password
+      POSTGRES_PASSWORD: mveu_secure_password_123
     ports:
       - "5432:5432"
     volumes:
@@ -32,6 +32,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles:
+      - postgres  # Only start with --profile postgres
 
   # Django Application
   web:
