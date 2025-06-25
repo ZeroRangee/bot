@@ -667,10 +667,16 @@ class TelegramBotHandler:
         
         if state == "ai_chat":
             await TelegramBotHandler.handle_ai_question(update, message_text)
+        elif state == "ai_chat_student":
+            await TelegramBotHandler.handle_ai_question_student(update, message_text)
         elif state == "admission_chat":
             await TelegramBotHandler.handle_admission_message(update, message_text)
         elif state == "uploading_docs":
             await TelegramBotHandler.handle_document_info(update, message_text)
+        elif state == "searching_schedule":
+            await TelegramBotHandler.handle_schedule_search(update, message_text)
+        elif state == "setting_group":
+            await TelegramBotHandler.handle_group_input(update, message_text)
         else:
             # Default response
             await update.message.reply_text(
